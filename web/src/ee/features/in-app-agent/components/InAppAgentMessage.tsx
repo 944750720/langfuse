@@ -23,8 +23,8 @@ import {
   type ReactNode,
 } from "react";
 import type {
-  InAppAgentMessageFeedback,
-  InAppAgentMessageFeedbackValue,
+  InAppAgentRunFeedback,
+  InAppAgentRunFeedbackValue,
   InAppAgentMessageSource,
 } from "@/src/ee/features/in-app-agent/schema";
 import {
@@ -46,7 +46,7 @@ export type InAppAgentMessageContent =
   | {
       type: "text";
       text: string;
-      feedback?: InAppAgentMessageFeedback;
+      feedback?: InAppAgentRunFeedback;
       sources?: InAppAgentMessageSource[];
     }
   | {
@@ -138,7 +138,7 @@ export type InAppAgentMessageProps = {
   isFeedbackDisabled?: boolean;
   windowZIndex?: number;
   onSubmitFeedback?: (params: {
-    value: InAppAgentMessageFeedbackValue | null;
+    value: InAppAgentRunFeedbackValue | null;
     comment?: string | null;
   }) => Promise<void>;
 };
@@ -229,7 +229,7 @@ function AssistantMessageWithFeedback({
   isFeedbackDisabled: boolean;
   windowZIndex?: number;
   onSubmitFeedback?: (params: {
-    value: InAppAgentMessageFeedbackValue | null;
+    value: InAppAgentRunFeedbackValue | null;
     comment?: string | null;
   }) => Promise<void>;
 }) {
@@ -289,12 +289,12 @@ function MessageFeedbackControls({
   windowZIndex,
   onSubmitFeedback,
 }: {
-  feedback?: InAppAgentMessageFeedback;
+  feedback?: InAppAgentRunFeedback;
   isCompact: boolean;
   isFeedbackDisabled: boolean;
   windowZIndex?: number;
   onSubmitFeedback: (params: {
-    value: InAppAgentMessageFeedbackValue | null;
+    value: InAppAgentRunFeedbackValue | null;
     comment?: string | null;
   }) => Promise<void>;
 }) {
@@ -309,7 +309,7 @@ function MessageFeedbackControls({
 
   const [submitFeedback, isSubmittingFeedback] = useWatchedPromiseCallback(
     async (
-      value: InAppAgentMessageFeedbackValue | null,
+      value: InAppAgentRunFeedbackValue | null,
       nextComment: string = committedComment,
     ) => {
       await onSubmitFeedback({
@@ -345,7 +345,7 @@ function MessageFeedbackControls({
     await submitComment().catch(() => undefined);
   };
 
-  const handleSelectFeedback = (value: InAppAgentMessageFeedbackValue) => {
+  const handleSelectFeedback = (value: InAppAgentRunFeedbackValue) => {
     if (selectedValue === value) {
       submitFeedback(null, "")
         .then(() => {
