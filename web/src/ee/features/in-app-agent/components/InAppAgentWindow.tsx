@@ -406,9 +406,10 @@ export function InAppAgentWindow(props: InAppAgentWindowProps) {
                   <li
                     key={message.id}
                     className={cn(
-                      "max-w-[92%]",
                       hasToolContent ? "w-full" : "w-fit",
-                      message.role === "user" && "ml-auto",
+                      message.role === "user"
+                        ? "ml-auto max-w-[92%]"
+                        : "max-w-full",
                     )}
                   >
                     <InAppAgentMessage
