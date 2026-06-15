@@ -20,11 +20,15 @@ jobs:
     steps:
       - name: Check mergeability and update label
         env:
-          GH_TOKEN: ${{ github.token }}
+          # The token should only have the following permissions:
+          # - Issues: read/write
+          # - Pull requests: read-only.
+          GH_TOKEN: ${{ secrets.PR_LABELER_TOKEN }}
           REPO: ${{ github.repository }}
           EVENT_NAME: ${{ github.event_name }}
           LABEL_NAME: has-conflicts
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          RUN_PR_AS_MAIN: true
         run: |
           set -euo pipefail
 
@@ -32,19 +36,19 @@ jobs:
             local pr_number="$1"
             local remove_stale_label="${2:-false}"
 
-            mergeable=$(gh api "repos/${REPO}/pulls/${pr_number}" --jq '.mergeable')
+            mergeable=$(gh api "repos/${REPO}/pulls/${pr_number}" --jq '.mergeable // "unknown"')
             for delay in 3 6 12 24; do
-              if [ "${mergeable}" != "null" ]; then
+              if [ "${mergeable}" != "unknown" ]; then
                 break
               fi
 
               sleep "${delay}"
-              mergeable=$(gh api "repos/${REPO}/pulls/${pr_number}" --jq '.mergeable')
+              mergeable=$(gh api "repos/${REPO}/pulls/${pr_number}" --jq '.mergeable // "unknown"')
             done
 
             echo "PR #${pr_number}: mergeable=${mergeable}"
 
-            if [ "${mergeable}" = "null" ]; then
+            if [ "${mergeable}" = "unknown" ]; then
               echo "::warning::PR #${pr_number}: mergeability was not computed after retries"
               return 1
             fi
@@ -62,9 +66,13 @@ jobs:
             fi
           }
 
-          if [ "${EVENT_NAME}" = "pull_request" ]; then
+          if [ "${EVENT_NAME}" = "pull_request" ] && [ "${RUN_PR_AS_MAIN}" != "true" ]; then
             update_label_if_needed "${PR_NUMBER}" true
           else
+            if [ "${EVENT_NAME}" = "pull_request" ]; then
+              echo "Running pull_request event with push-to-main behavior for test run"
+            fi
+
             sleep 10
             cutoff_date=$(date -u -d "14 days ago" +%F)
             # On main pushes, only scan same-repo PRs that are not already labeled.
