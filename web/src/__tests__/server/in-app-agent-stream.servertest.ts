@@ -7,6 +7,7 @@ import type { AgUiEvent } from "@/src/ee/features/in-app-agent/schema";
 
 const adapterEvents = vi.hoisted(() => ({
   items: [] as AgUiEvent[],
+  chunks: [] as unknown[],
   cleanup: vi.fn().mockResolvedValue(undefined),
   inputs: [] as unknown[],
 }));
@@ -29,13 +30,86 @@ const instrumentationMocks = vi.hoisted(() => {
 
 vi.mock("@ag-ui/mastra", () => ({
   MastraAgent: vi.fn().mockImplementation(function () {
-    return {
+    const adapter = {
+      createChunkProcessor: vi.fn(
+        (callbacks: {
+          onToolCallPart?: (streamPart: {
+            toolCallId: string;
+            toolName: string;
+            args: unknown;
+          }) => void;
+          onError: (error: Error) => void;
+        }) => ({
+          handleChunk: (chunk: {
+            type?: string;
+            payload?: {
+              toolCallId?: string;
+              toolName?: string;
+              args?: unknown;
+            };
+          }) => {
+            if (chunk.type === "tool-call") {
+              callbacks.onToolCallPart?.({
+                toolCallId: chunk.payload?.toolCallId ?? "",
+                toolName: chunk.payload?.toolName ?? "",
+                args: chunk.payload?.args,
+              });
+              return false;
+            }
+
+            if (chunk.type === "error") {
+              callbacks.onError(new Error("stream failed"));
+              return true;
+            }
+
+            console.warn(
+              `[MastraAgent] Unrecognized stream chunk type: ${chunk.type}`,
+            );
+            return false;
+          },
+          flush: vi.fn(),
+        }),
+      ),
       run: (input: unknown) => ({
         subscribe: (subscriber: {
           next: (event: AgUiEvent) => void;
           complete: () => void;
         }) => {
           adapterEvents.inputs.push(input);
+
+          if (adapterEvents.chunks.length > 0) {
+            const processor = adapter.createChunkProcessor({
+              onToolCallPart: (streamPart) => {
+                subscriber.next({
+                  type: "TOOL_CALL_START",
+                  parentMessageId: "assistant-message-1",
+                  toolCallId: streamPart.toolCallId,
+                  toolCallName: streamPart.toolName,
+                } as AgUiEvent);
+                subscriber.next({
+                  type: "TOOL_CALL_ARGS",
+                  toolCallId: streamPart.toolCallId,
+                  delta: JSON.stringify(streamPart.args),
+                } as AgUiEvent);
+                subscriber.next({
+                  type: "TOOL_CALL_END",
+                  toolCallId: streamPart.toolCallId,
+                } as AgUiEvent);
+              },
+              onError: (error) => {
+                throw error;
+              },
+            });
+
+            for (const chunk of adapterEvents.chunks) {
+              if (processor.handleChunk(chunk as never)) {
+                break;
+              }
+            }
+            processor.flush();
+            subscriber.complete();
+            return { unsubscribe: vi.fn() };
+          }
 
           for (const event of adapterEvents.items) {
             subscriber.next(event);
@@ -45,6 +119,7 @@ vi.mock("@ag-ui/mastra", () => ({
         },
       }),
     };
+    return adapter;
   }),
 }));
 
@@ -120,6 +195,7 @@ vi.mock("@/src/ee/features/in-app-agent/server/instrumentation", () => ({
 describe("createAgUiStream", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    adapterEvents.chunks = [];
   });
 
   it("serializes valid events including adapter message snapshots", async () => {
@@ -282,6 +358,225 @@ describe("createAgUiStream", () => {
     ]);
     expect(instrumentationMocks.instrumentation.end).toHaveBeenCalledWith({});
     expect(instrumentationMocks.instrumentation.flush).toHaveBeenCalled();
+  });
+
+  it("maps Mastra streaming tool-call chunks without warning", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { createAgUiStream } =
+      await import("@/src/ee/features/in-app-agent/server/agent");
+    const input = {
+      threadId: "conversation-1",
+      runId: "run-1",
+      messages: [
+        {
+          id: "user-message-1",
+          role: "user" as const,
+          content: "hello",
+        },
+      ],
+      tools: [],
+      context: [],
+      state: null,
+      forwardedProps: {},
+    };
+    const persistedEvents: AgUiEvent[] = [];
+    adapterEvents.chunks = [
+      {
+        type: "tool-call-input-streaming-start",
+        payload: {
+          toolCallId: "tool-call-1",
+          toolName: "langfuseDocs_search",
+        },
+      },
+      {
+        type: "tool-call-delta",
+        payload: {
+          toolCallId: "tool-call-1",
+          argsTextDelta: '{"query":"invite',
+        },
+      },
+      {
+        type: "tool-call-delta",
+        payload: {
+          toolCallId: "tool-call-1",
+          argsTextDelta: ' users"}',
+        },
+      },
+      {
+        type: "tool-call-input-streaming-end",
+        payload: {
+          toolCallId: "tool-call-1",
+        },
+      },
+    ];
+
+    try {
+      const stream = createAgUiStream({
+        input,
+        signal: new AbortController().signal,
+        options: {
+          onEvent: (event) => {
+            persistedEvents.push(event);
+          },
+          awsBedrock: { modelId: "test-model" },
+          langfuseMcp: {
+            url: "https://example.com/api/public/mcp",
+            publicKey: "pk",
+            secretKey: "sk",
+          },
+        },
+      });
+
+      await readStream(stream);
+
+      expect(persistedEvents).toEqual([
+        expect.objectContaining({
+          type: EventType.TOOL_CALL_START,
+          toolCallId: "tool-call-1",
+          toolCallName: "langfuseDocs_search",
+        }),
+        expect.objectContaining({
+          type: EventType.TOOL_CALL_ARGS,
+          toolCallId: "tool-call-1",
+          delta: JSON.stringify({ query: "invite users" }),
+        }),
+        expect.objectContaining({
+          type: EventType.TOOL_CALL_END,
+          toolCallId: "tool-call-1",
+        }),
+      ]);
+      expect(warnSpy).not.toHaveBeenCalledWith(
+        expect.stringContaining("Unrecognized stream chunk type"),
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("maps interleaved Mastra streaming tool-call chunks", async () => {
+    const { createAgUiStream } =
+      await import("@/src/ee/features/in-app-agent/server/agent");
+    const input = {
+      threadId: "conversation-1",
+      runId: "run-1",
+      messages: [
+        {
+          id: "user-message-1",
+          role: "user" as const,
+          content: "hello",
+        },
+      ],
+      tools: [],
+      context: [],
+      state: null,
+      forwardedProps: {},
+    };
+    const persistedEvents: AgUiEvent[] = [];
+    adapterEvents.chunks = [
+      {
+        type: "tool-call-input-streaming-start",
+        payload: {
+          toolCallId: "tool-call-1",
+          toolName: "langfuseDocs_search",
+        },
+      },
+      {
+        type: "tool-call-delta",
+        payload: {
+          toolCallId: "tool-call-1",
+          argsTextDelta: '{"query":"invite',
+        },
+      },
+      {
+        type: "tool-call-input-streaming-start",
+        payload: {
+          toolCallId: "tool-call-2",
+          toolName: "langfuse_search",
+        },
+      },
+      {
+        type: "tool-call-delta",
+        payload: {
+          toolCallId: "tool-call-2",
+          argsTextDelta: '{"traceId":"trace',
+        },
+      },
+      {
+        type: "tool-call-delta",
+        payload: {
+          toolCallId: "tool-call-1",
+          argsTextDelta: ' users"}',
+        },
+      },
+      {
+        type: "tool-call-delta",
+        payload: {
+          toolCallId: "tool-call-2",
+          argsTextDelta: '-1"}',
+        },
+      },
+      {
+        type: "tool-call-input-streaming-end",
+        payload: {
+          toolCallId: "tool-call-2",
+        },
+      },
+      {
+        type: "tool-call-input-streaming-end",
+        payload: {
+          toolCallId: "tool-call-1",
+        },
+      },
+    ];
+
+    const stream = createAgUiStream({
+      input,
+      signal: new AbortController().signal,
+      options: {
+        onEvent: (event) => {
+          persistedEvents.push(event);
+        },
+        awsBedrock: { modelId: "test-model" },
+        langfuseMcp: {
+          url: "https://example.com/api/public/mcp",
+          publicKey: "pk",
+          secretKey: "sk",
+        },
+      },
+    });
+
+    await readStream(stream);
+
+    expect(persistedEvents).toEqual([
+      expect.objectContaining({
+        type: EventType.TOOL_CALL_START,
+        toolCallId: "tool-call-2",
+        toolCallName: "langfuse_search",
+      }),
+      expect.objectContaining({
+        type: EventType.TOOL_CALL_ARGS,
+        toolCallId: "tool-call-2",
+        delta: JSON.stringify({ traceId: "trace-1" }),
+      }),
+      expect.objectContaining({
+        type: EventType.TOOL_CALL_END,
+        toolCallId: "tool-call-2",
+      }),
+      expect.objectContaining({
+        type: EventType.TOOL_CALL_START,
+        toolCallId: "tool-call-1",
+        toolCallName: "langfuseDocs_search",
+      }),
+      expect.objectContaining({
+        type: EventType.TOOL_CALL_ARGS,
+        toolCallId: "tool-call-1",
+        delta: JSON.stringify({ query: "invite users" }),
+      }),
+      expect.objectContaining({
+        type: EventType.TOOL_CALL_END,
+        toolCallId: "tool-call-1",
+      }),
+    ]);
   });
 
   it("lets HttpAgent subscribers observe streamed run errors", async () => {
