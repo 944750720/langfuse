@@ -92,10 +92,14 @@ export default function BlobStorageIntegrationSettings() {
           nextSyncAt: state.data.config.nextSyncAt
             ? new Date(state.data.config.nextSyncAt)
             : null,
+          runStartedAt: state.data.config.runStartedAt
+            ? new Date(state.data.config.runStartedAt)
+            : null,
         });
 
   const syncStatusToBadge: Record<BlobStorageSyncStatus, string> = {
     up_to_date: "active",
+    running: "running",
     queued: "queued",
     idle: "inactive",
     disabled: "disabled",

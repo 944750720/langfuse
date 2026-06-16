@@ -182,6 +182,7 @@ types:
       Sync status of the blob storage integration:
       - `disabled` — integration is not enabled
       - `error` — last export failed (see `lastError` for details)
+      - `running` — an export job is currently being processed
       - `idle` — enabled but has never exported yet
       - `queued` — next export is overdue (`nextSyncAt` is in the past) and waiting to be picked up by the worker
       - `up_to_date` — all available data has been exported; next export is scheduled for the future
@@ -191,6 +192,7 @@ types:
       so `lastSyncAt` will always be at least 20 minutes behind real-time.
     enum:
       - idle
+      - running
       - queued
       - up_to_date
       - disabled

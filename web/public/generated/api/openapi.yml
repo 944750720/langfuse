@@ -8072,6 +8072,7 @@ components:
       type: string
       enum:
         - idle
+        - running
         - queued
         - up_to_date
         - disabled
@@ -8082,6 +8083,8 @@ components:
         - `disabled` — integration is not enabled
 
         - `error` — last export failed (see `lastError` for details)
+
+        - `running` — an export job is currently being processed
 
         - `idle` — enabled but has never exported yet
 

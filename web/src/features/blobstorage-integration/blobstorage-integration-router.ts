@@ -249,6 +249,12 @@ export const blobStorageIntegrationRouter = createTRPCRouter({
           });
         }
 
+        // Mark the run as started so the UI can show a "Running" status
+        await ctx.prisma.blobStorageIntegration.update({
+          where: { projectId: input.projectId },
+          data: { runStartedAt: new Date() },
+        });
+
         // Create a unique job ID for manual runs to avoid conflicts
         const jobId = `${input.projectId}-manual-${new Date().toISOString()}`;
 

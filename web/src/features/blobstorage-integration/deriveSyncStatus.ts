@@ -5,9 +5,11 @@ export function deriveSyncStatus(integration: {
   lastError: string | null;
   lastSyncAt: Date | null;
   nextSyncAt: Date | null;
+  runStartedAt: Date | null;
 }): BlobStorageSyncStatus {
   if (!integration.enabled) return "disabled";
   if (integration.lastError) return "error";
+  if (integration.runStartedAt) return "running";
   if (!integration.lastSyncAt) return "idle";
 
   const now = new Date();

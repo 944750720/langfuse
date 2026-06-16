@@ -55,6 +55,7 @@ export type BlobStorageIntegrationFormSchema = z.infer<
 
 export type BlobStorageSyncStatus =
   | "idle"
+  | "running"
   | "queued"
   | "up_to_date"
   | "disabled"

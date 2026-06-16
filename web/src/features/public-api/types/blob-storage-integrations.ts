@@ -175,6 +175,7 @@ export type BlobStorageIntegrationResponseType = z.infer<
 
 export const BlobStorageSyncStatus = z.enum([
   "idle",
+  "running",
   "queued",
   "up_to_date",
   "disabled",
