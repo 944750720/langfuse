@@ -1,5 +1,7 @@
 import type { BlobStorageSyncStatus } from "@/src/features/blobstorage-integration/types";
 
+const MAX_RUN_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
+
 export function deriveSyncStatus(integration: {
   enabled: boolean;
   lastError: string | null;
@@ -9,7 +11,10 @@ export function deriveSyncStatus(integration: {
 }): BlobStorageSyncStatus {
   if (!integration.enabled) return "disabled";
   if (integration.lastError) return "error";
-  if (integration.runStartedAt) return "running";
+  if (integration.runStartedAt) {
+    const ageMs = Date.now() - integration.runStartedAt.getTime();
+    if (ageMs < MAX_RUN_AGE_MS) return "running";
+  }
   if (!integration.lastSyncAt) return "idle";
 
   const now = new Date();

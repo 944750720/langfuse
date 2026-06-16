@@ -381,13 +381,12 @@ export const handleBlobStorageIntegrationProjectJob = async (
     logger.info(
       `[BLOB INTEGRATION] Blob storage integration is disabled for project ${projectId}`,
     );
+    await prisma.blobStorageIntegration.updateMany({
+      where: { projectId, runStartedAt: { not: null } },
+      data: { runStartedAt: null },
+    });
     return;
   }
-
-  await prisma.blobStorageIntegration.update({
-    where: { projectId },
-    data: { runStartedAt: new Date() },
-  });
 
   // Sync between lastSyncAt and now - 30 minutes
   // Cap the export to one frequency period to enable chunked historic exports
@@ -436,6 +435,11 @@ export const handleBlobStorageIntegrationProjectJob = async (
   }
 
   try {
+    await prisma.blobStorageIntegration.update({
+      where: { projectId },
+      data: { runStartedAt: new Date() },
+    });
+
     // Preflight the persisted integration endpoint once per job inside the
     // export error path. StorageService connection-time validation remains the
     // DNS-rebinding defense for each SDK connection.

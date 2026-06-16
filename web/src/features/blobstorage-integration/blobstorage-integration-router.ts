@@ -249,12 +249,6 @@ export const blobStorageIntegrationRouter = createTRPCRouter({
           });
         }
 
-        // Mark the run as started so the UI can show a "Running" status
-        await ctx.prisma.blobStorageIntegration.update({
-          where: { projectId: input.projectId },
-          data: { runStartedAt: new Date() },
-        });
-
         // Create a unique job ID for manual runs to avoid conflicts
         const jobId = `${input.projectId}-manual-${new Date().toISOString()}`;
 
@@ -273,6 +267,13 @@ export const blobStorageIntegrationRouter = createTRPCRouter({
             jobId,
           },
         );
+
+        // Mark the run as started only after successful enqueue so a failed
+        // queue.add() (e.g. Redis blip) doesn't leave the badge stuck on "Running".
+        await ctx.prisma.blobStorageIntegration.update({
+          where: { projectId: input.projectId },
+          data: { runStartedAt: new Date() },
+        });
 
         logger.info(
           `Manual blob storage integration job queued for project ${input.projectId}`,
