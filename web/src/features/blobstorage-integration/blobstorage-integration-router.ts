@@ -251,7 +251,7 @@ export const blobStorageIntegrationRouter = createTRPCRouter({
 
         await ctx.prisma.blobStorageIntegration.update({
           where: { projectId: input.projectId },
-          data: { runStartedAt: new Date() },
+          data: { runStartedAt: new Date(), lastError: null, lastErrorAt: null },
         });
 
         // Create a unique job ID for manual runs to avoid conflicts

@@ -87,7 +87,9 @@ export default function BlobStorageIntegrationSettings() {
           nextSyncAt: cfg.nextSyncAt ? new Date(cfg.nextSyncAt) : null,
           runStartedAt: cfg.runStartedAt ? new Date(cfg.runStartedAt) : null,
         });
-        return status === "running" ? 5_000 : false;
+        return status === "running" || status === "queued"
+          ? 5_000
+          : false;
       },
     },
   );
