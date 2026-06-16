@@ -36,6 +36,7 @@ const HOUR_AGO = new Date(NOW - 60 * 60 * 1000);
 const TWO_HOURS_AGO = new Date(NOW - 2 * 60 * 60 * 1000);
 const THIRTY_MIN_AGO = new Date(NOW - 30 * 60 * 1000);
 const TEN_MIN_AGO = new Date(NOW - 10 * 60 * 1000);
+const THREE_HOURS_AGO = new Date(NOW - 3 * 60 * 60 * 1000);
 const TOMORROW = new Date(NOW + 24 * 60 * 60 * 1000);
 
 describe("Blob Storage Integration Status API - GET /api/public/integrations/blob-storage/{id}", () => {
@@ -278,6 +279,16 @@ describe("Blob Storage Integration Status API - GET /api/public/integrations/blo
       lastErrorAt: THIRTY_MIN_AGO,
       expectedStatus: "disabled",
       expectedFields: { lastError: "Access Denied" },
+    },
+    {
+      name: "stale runStartedAt ignored (>2h TTL, falls through to up_to_date)",
+      enabled: true,
+      lastSyncAt: HOUR_AGO,
+      nextSyncAt: TOMORROW,
+      lastError: null,
+      lastErrorAt: null,
+      runStartedAt: THREE_HOURS_AGO,
+      expectedStatus: "up_to_date",
     },
     {
       name: "error > running (precedence: lastError wins over runStartedAt)",
