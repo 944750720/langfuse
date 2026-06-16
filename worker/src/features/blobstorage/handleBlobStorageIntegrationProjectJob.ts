@@ -388,53 +388,53 @@ export const handleBlobStorageIntegrationProjectJob = async (
     return;
   }
 
-  // Sync between lastSyncAt and now - 30 minutes
-  // Cap the export to one frequency period to enable chunked historic exports
-  const minTimestamp = await getMinTimestampForExport(
-    projectId,
-    blobStorageIntegration.lastSyncAt,
-    blobStorageIntegration.exportMode,
-    blobStorageIntegration.exportStartDate,
-  );
-
-  logger.info(
-    `[BLOB INTEGRATION] Calculated minTimestamp for project ${projectId}: ${minTimestamp}, isValid: ${!isNaN(minTimestamp.getTime())}, getTime: ${minTimestamp.getTime()}, exportMode: ${blobStorageIntegration.exportMode}, lastSyncAt: ${blobStorageIntegration.lastSyncAt}, exportStartDate: ${blobStorageIntegration.exportStartDate}`,
-  );
-
-  const now = new Date();
-  const uncappedMaxTimestamp = new Date(
-    now.getTime() - BLOB_STORAGE_LAG_BUFFER_MS,
-  );
-  const frequencyIntervalMs = getFrequencyIntervalMs(
-    blobStorageIntegration.exportFrequency,
-  );
-
-  // Cap maxTimestamp to one frequency period ahead of minTimestamp
-  // This ensures large historic exports are broken into manageable chunks
-  const maxTimestamp = new Date(
-    Math.min(
-      minTimestamp.getTime() + frequencyIntervalMs,
-      uncappedMaxTimestamp.getTime(),
-    ),
-  );
-
-  logger.info(
-    `[BLOB INTEGRATION] Calculated maxTimestamp for project ${projectId}: ${maxTimestamp}, isValid: ${!isNaN(maxTimestamp.getTime())}, getTime: ${maxTimestamp.getTime()}, frequencyIntervalMs: ${frequencyIntervalMs}`,
-  );
-
-  // Skip export if the time window is empty or invalid
-  if (minTimestamp >= maxTimestamp) {
-    logger.info(
-      `[BLOB INTEGRATION] Skipping export for project ${projectId}: time window is empty (min: ${minTimestamp.toISOString()}, max: ${maxTimestamp.toISOString()})`,
-    );
-    await prisma.blobStorageIntegration.update({
-      where: { projectId },
-      data: { runStartedAt: null },
-    });
-    return;
-  }
-
   try {
+    // Sync between lastSyncAt and now - 30 minutes
+    // Cap the export to one frequency period to enable chunked historic exports
+    const minTimestamp = await getMinTimestampForExport(
+      projectId,
+      blobStorageIntegration.lastSyncAt,
+      blobStorageIntegration.exportMode,
+      blobStorageIntegration.exportStartDate,
+    );
+
+    logger.info(
+      `[BLOB INTEGRATION] Calculated minTimestamp for project ${projectId}: ${minTimestamp}, isValid: ${!isNaN(minTimestamp.getTime())}, getTime: ${minTimestamp.getTime()}, exportMode: ${blobStorageIntegration.exportMode}, lastSyncAt: ${blobStorageIntegration.lastSyncAt}, exportStartDate: ${blobStorageIntegration.exportStartDate}`,
+    );
+
+    const now = new Date();
+    const uncappedMaxTimestamp = new Date(
+      now.getTime() - BLOB_STORAGE_LAG_BUFFER_MS,
+    );
+    const frequencyIntervalMs = getFrequencyIntervalMs(
+      blobStorageIntegration.exportFrequency,
+    );
+
+    // Cap maxTimestamp to one frequency period ahead of minTimestamp
+    // This ensures large historic exports are broken into manageable chunks
+    const maxTimestamp = new Date(
+      Math.min(
+        minTimestamp.getTime() + frequencyIntervalMs,
+        uncappedMaxTimestamp.getTime(),
+      ),
+    );
+
+    logger.info(
+      `[BLOB INTEGRATION] Calculated maxTimestamp for project ${projectId}: ${maxTimestamp}, isValid: ${!isNaN(maxTimestamp.getTime())}, getTime: ${maxTimestamp.getTime()}, frequencyIntervalMs: ${frequencyIntervalMs}`,
+    );
+
+    // Skip export if the time window is empty or invalid
+    if (minTimestamp >= maxTimestamp) {
+      logger.info(
+        `[BLOB INTEGRATION] Skipping export for project ${projectId}: time window is empty (min: ${minTimestamp.toISOString()}, max: ${maxTimestamp.toISOString()})`,
+      );
+      await prisma.blobStorageIntegration.update({
+        where: { projectId },
+        data: { runStartedAt: null },
+      });
+      return;
+    }
+
     await prisma.blobStorageIntegration.update({
       where: { projectId },
       data: { runStartedAt: new Date() },

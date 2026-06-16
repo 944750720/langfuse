@@ -249,31 +249,43 @@ export const blobStorageIntegrationRouter = createTRPCRouter({
           });
         }
 
-        // Create a unique job ID for manual runs to avoid conflicts
-        const jobId = `${input.projectId}-manual-${new Date().toISOString()}`;
-
-        // Enqueue the processing job
-        await blobStorageIntegrationProcessingQueue.add(
-          QueueJobs.BlobStorageIntegrationProcessingJob,
-          {
-            id: randomUUID(),
-            name: QueueJobs.BlobStorageIntegrationProcessingJob,
-            timestamp: new Date(),
-            payload: {
-              projectId: input.projectId,
-            },
-          },
-          {
-            jobId,
-          },
-        );
-
-        // Mark the run as started only after successful enqueue so a failed
-        // queue.add() (e.g. Redis blip) doesn't leave the badge stuck on "Running".
         await ctx.prisma.blobStorageIntegration.update({
           where: { projectId: input.projectId },
           data: { runStartedAt: new Date() },
         });
+
+        // Create a unique job ID for manual runs to avoid conflicts
+        const jobId = `${input.projectId}-manual-${new Date().toISOString()}`;
+
+        try {
+          await blobStorageIntegrationProcessingQueue.add(
+            QueueJobs.BlobStorageIntegrationProcessingJob,
+            {
+              id: randomUUID(),
+              name: QueueJobs.BlobStorageIntegrationProcessingJob,
+              timestamp: new Date(),
+              payload: {
+                projectId: input.projectId,
+              },
+            },
+            {
+              jobId,
+            },
+          );
+        } catch (enqueueError) {
+          await ctx.prisma.blobStorageIntegration
+            .update({
+              where: { projectId: input.projectId },
+              data: { runStartedAt: null },
+            })
+            .catch((rollbackError) =>
+              logger.error(
+                "Failed to roll back runStartedAt after enqueue failure",
+                rollbackError,
+              ),
+            );
+          throw enqueueError;
+        }
 
         logger.info(
           `Manual blob storage integration job queued for project ${input.projectId}`,
